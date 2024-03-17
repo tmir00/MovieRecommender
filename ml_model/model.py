@@ -9,22 +9,27 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import OneHotEncoder, MultiLabelBinarizer
 
+COSINE_SIMILARITIES_PATH = '/app/data/cosine_similarities.npy'
+MOVIE_IDS_LIST_PATH = '/app/data/movie_ids_list.npy'
 db_connection = psycopg2.connect(
     dbname="movielens",
     user="user",
     password="password",
-    host="localhost"  # or "db" if running inside a Docker network
+    host="db"
 )
-
 cur = db_connection.cursor()
 
 global all_cosine_similarities, movie_ids
 
-if os.path.exists('./cosine_similarities.npy'):
-    all_cosine_similarities = np.load('./cosine_similarities.npy')
+if os.path.exists(COSINE_SIMILARITIES_PATH):
+    all_cosine_similarities = np.load(COSINE_SIMILARITIES_PATH)
+else:
+    all_cosine_similarities = None
 
-if os.path.exists('./movie_ids_list.npy'):
-    movie_ids = np.load('./movie_ids_list.npy')
+if os.path.exists(MOVIE_IDS_LIST_PATH):
+    movie_ids = np.load(MOVIE_IDS_LIST_PATH)
+else:
+    all_cosine_similarities = None
 
 
 ###################################### Collaborative Filtering ######################################
@@ -137,16 +142,18 @@ def process_data(df):
     ])
 
     cosine_similarities = cosine_similarity(combined_features)
-    np.save('./cosine_similarities.npy', cosine_similarities)
+    np.save(COSINE_SIMILARITIES_PATH, cosine_similarities)
 
     movie_ids_list = df_preprocessed['id'].tolist()
-    np.save('./movie_ids_list.npy', movie_ids_list)
+    np.save(MOVIE_IDS_LIST_PATH, movie_ids_list)
 
 
 def load_and_compare(movie_id):
     global all_cosine_similarities, movie_ids
-    all_cosine_similarities = np.load('./cosine_similarities.npy')
-    movie_ids = np.load('./movie_ids_list.npy')
+    if all_cosine_similarities is None:
+        all_cosine_similarities = np.load(COSINE_SIMILARITIES_PATH)
+    if movie_ids is None:
+        movie_ids = np.load(MOVIE_IDS_LIST_PATH)
 
     movie_ids_list = movie_ids.tolist()
     movie_index = movie_ids_list.index(movie_id)
@@ -165,14 +172,15 @@ def train():
     global all_cosine_similarities, movie_ids
     df = pd.read_sql_query(query, db_connection)
     process_data(df)
-    all_cosine_similarities = np.load('./cosine_similarities.npy')
-    movie_ids = np.load('./movie_ids_list.npy')
+    all_cosine_similarities = np.load(COSINE_SIMILARITIES_PATH)
+    movie_ids = np.load(MOVIE_IDS_LIST_PATH)
 
 
 def run_model(user_id):
-    # train()
-    account = True
+    if not os.path.exists(COSINE_SIMILARITIES_PATH) or not os.path.exists(MOVIE_IDS_LIST_PATH):
+        train()
 
+    account = True
     user_query = f"""
         SELECT age, gender, occupation FROM users
         WHERE user_id = %s
@@ -216,7 +224,3 @@ def run_model(user_id):
             best_movies.append(sorted_results[i][0])
 
     return best_movies, account
-
-for i in range(3):
-    result = run_model(i)
-    print("Account: {}, Movies: {}".format(result[1], result[0]))
