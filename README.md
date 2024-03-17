@@ -33,6 +33,12 @@ The response includes a flag indicating whether the user has an account in our d
 
 <br>
 
+## **Pre-Requisites**
+
+Before you get started with the Movie Recommender Backend App, ensure that you have [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed on your machine. Docker Desktop includes Docker Compose, which is required to manage the multi-container setup of the application. Installing Docker Desktop will provide you with all the necessary tools to run the application smoothly.
+
+<br>
+
 ## **Getting Started**
 1. Clone the repository
 ```bash
@@ -175,5 +181,6 @@ curl -X POST http://localhost:5000/predict -H "Content-Type: application/json" -
 
 ## Process Flow Diagram
 The diagram below summarizes and illustrates the data flow and operational processes within the project, from initial data processing to the final output of personalized movie recommendations.
+
 ![Process Flow](images/projectflow.png)
 
