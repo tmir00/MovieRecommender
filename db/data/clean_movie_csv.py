@@ -1,7 +1,14 @@
 import pandas as pd
 import json
 
+
 def json_to_pipe(json_str):
+    """
+    Convert a json formatted string into a string with attributes previously indexed by 'name' separated by pipe.
+
+    :param json_str: String to be formatted.
+    :return: A string with attributes separated by pipe.
+    """
     try:
         if isinstance(json_str, str):
             # Replace single quotes with double quotes for valid JSON
@@ -15,6 +22,7 @@ def json_to_pipe(json_str):
         print(f"JSONDecodeError: {e}")
         print(f"Offending string: {json_str}")
         return ''
+
 
 # Load the CSV file into a DataFrame
 df = pd.read_csv('movies.csv')
