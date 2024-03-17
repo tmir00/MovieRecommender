@@ -17,6 +17,7 @@ services:
     build: ./ml_model
     volumes:
       - ./ml_model:/app
+      - ./ml_model_data:/app/data
     environment:
       DATABASE_URL: postgresql://user:password@db/movielens
     depends_on:

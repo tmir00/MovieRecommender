@@ -1,3 +1,4 @@
+from model import run_model
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -6,17 +7,13 @@ app = Flask(__name__)
 @app.route('/predict', methods=['POST'])
 def predict():
     data = request.get_json(force=True)
-    age = data.get('age')
-    gender = data.get('gender')
-    occupation = data.get('occupation')
-    favoritemovie1 = data.get('favoritemovie1')
-    favoritemovie2 = data.get('favoritemovie2')
-    favoritemovie3 = data.get('favoritemovie3')
+    user_id = data.get('age')
 
-    prediction = model(age, gender, occupation, favoritemovie1, favoritemovie2, favoritemovie3)
+    prediction = run_model(user_id)
 
     response = {
-        'prediction': prediction
+        'prediction': prediction[1],
+        'account': prediction[0]
     }
 
     return jsonify(response)

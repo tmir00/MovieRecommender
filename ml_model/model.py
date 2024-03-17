@@ -3,15 +3,11 @@ import os
 import numpy as np
 import psycopg2
 import pandas as pd
-from collections import defaultdict
 
-from sklearn.decomposition import TruncatedSVD
+from collections import defaultdict
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, MultiLabelBinarizer
-import faiss
-from scipy.sparse import hstack, save_npz, load_npz
 
 db_connection = psycopg2.connect(
     dbname="movielens",
@@ -20,6 +16,7 @@ db_connection = psycopg2.connect(
     host="localhost"  # or "db" if running inside a Docker network
 )
 
+cur = db_connection.cursor()
 
 global all_cosine_similarities, movie_ids
 
@@ -29,10 +26,11 @@ if os.path.exists('./cosine_similarities.npy'):
 if os.path.exists('./movie_ids_list.npy'):
     movie_ids = np.load('./movie_ids_list.npy')
 
+
 ###################################### Collaborative Filtering ######################################
-def find_highly_rated_movies_for_similar_users(age, gender, occupation, connection):
+def find_highly_rated_movies_for_similar_users(age, gender, occupation):
     # Fetch similar users
-    similar_users = find_similar_users(age, gender, occupation, connection)
+    similar_users = find_similar_users(age, gender, occupation)
     if not similar_users:
         return None
 
@@ -50,7 +48,7 @@ def find_highly_rated_movies_for_similar_users(age, gender, occupation, connecti
             ORDER BY avg_rating DESC
             LIMIT 3
         """
-        temp_movies = pd.read_sql_query(query, connection)
+        temp_movies = pd.read_sql_query(query, db_connection)
         for index, row in temp_movies.iterrows():
             movie_id = row['movie']
             avg_rating = row['avg_rating']
@@ -65,8 +63,9 @@ def find_highly_rated_movies_for_similar_users(age, gender, occupation, connecti
     top_movies = [movie[0] for movie in sorted_movies[:6]]
     return top_movies
 
+
 # Function to find similar users based on the previous criteria
-def find_similar_users(age, gender, occupation, connection):
+def find_similar_users(age, gender, occupation):
     queries = [
         f"""
         SELECT user_id
@@ -91,7 +90,7 @@ def find_similar_users(age, gender, occupation, connection):
     results = []
 
     for query in queries:
-        temp_users = pd.read_sql_query(query, connection)
+        temp_users = pd.read_sql_query(query, db_connection)
         results.append(temp_users['user_id'].tolist())
 
     return results if any(results) else None
@@ -144,17 +143,20 @@ def process_data(df):
     np.save('./movie_ids_list.npy', movie_ids_list)
 
 
-def load_and_compare(cosine_similarities, movies, movie_id):
+def load_and_compare(movie_id):
+    global all_cosine_similarities, movie_ids
+    all_cosine_similarities = np.load('./cosine_similarities.npy')
+    movie_ids = np.load('./movie_ids_list.npy')
 
-    movie_ids_list = movies.tolist()
+    movie_ids_list = movie_ids.tolist()
     movie_index = movie_ids_list.index(movie_id)
-    movie_similarities = cosine_similarities[movie_index]
+    movie_similarities = all_cosine_similarities[movie_index]
 
-    print(len(movie_similarities))
     similar_indices = movie_similarities.argsort()
     similar_movie_ids = [movie_ids_list[i] for i in similar_indices[-4:-1] if i != movie_index]
 
-    return similar_movie_ids[-2:]
+    return similar_movie_ids[-1:]
+
 
 def train():
     query = f"""
@@ -166,8 +168,55 @@ def train():
     all_cosine_similarities = np.load('./cosine_similarities.npy')
     movie_ids = np.load('./movie_ids_list.npy')
 
+
 def run_model(user_id):
     # train()
-    results = load_and_compare(all_cosine_similarities, movie_ids, 'captain+america+the+first+avenger+2011')
+    account = True
 
+    user_query = f"""
+        SELECT age, gender, occupation FROM users
+        WHERE user_id = %s
+    """
+    cur.execute(user_query, (user_id,))
+    user_results = cur.fetchall()
+    best_movies = []
 
+    if not user_results:
+        account = False
+    else:
+        best_movies = find_highly_rated_movies_for_similar_users(user_results[0][0], user_results[0][1], user_results[0][2])
+
+    query = """
+            SELECT movie, rating FROM ratings
+            WHERE user_id = %s AND rating >= 4 
+            ORDER BY rating DESC
+            LIMIT 3
+        """
+
+    cur.execute(query, (user_id,))
+    results = cur.fetchall()
+
+    for movie in range(len(results)):
+        best_movies += load_and_compare(results[movie][0])
+
+    query_popular = """
+            SELECT id, vote_average, vote_count FROM movies
+            WHERE vote_count > 200 
+            ORDER BY vote_average DESC 
+            LIMIT 10
+        """
+    cur.execute(query_popular)
+    results = cur.fetchall()
+    sorted_results = sorted(results, key=lambda x: x[1])
+
+    for i in range(len(sorted_results)):
+        if len(best_movies) == 10:
+            break
+        if sorted_results[i][0] not in best_movies:
+            best_movies.append(sorted_results[i][0])
+
+    return best_movies, account
+
+for i in range(3):
+    result = run_model(i)
+    print("Account: {}, Movies: {}".format(result[1], result[0]))
