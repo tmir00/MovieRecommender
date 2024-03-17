@@ -12,7 +12,6 @@ df['age'] = df['age'].astype(float).astype(int)
 
 # Drop duplicates based on the 'user_id' column
 df.drop_duplicates(subset='user_id', keep='first', inplace=True)
-df.drop('message', axis=1, inplace=True)
 
 # Save the cleaned DataFrame back into the same CSV file
 df.to_csv('users.csv', index=False)

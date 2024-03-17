@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import psycopg2
 import pandas as pd
@@ -17,6 +19,15 @@ db_connection = psycopg2.connect(
     password="password",
     host="localhost"  # or "db" if running inside a Docker network
 )
+
+
+global all_cosine_similarities, movie_ids
+
+if os.path.exists('./cosine_similarities.npy'):
+    all_cosine_similarities = np.load('./cosine_similarities.npy')
+
+if os.path.exists('./movie_ids_list.npy'):
+    movie_ids = np.load('./movie_ids_list.npy')
 
 ###################################### Collaborative Filtering ######################################
 def find_highly_rated_movies_for_similar_users(age, gender, occupation, connection):
@@ -88,88 +99,75 @@ def find_similar_users(age, gender, occupation, connection):
 
 ###################################### Content-Based Filtering ######################################
 
-global mlb_countries, mlb_companies, ohe_language, tfidf
+def preprocess_columns(df):
+    """
+    Fill NA values and split genres, production countries, and production companies into lists.
+    """
+    for column in ['overview', 'production_countries', 'production_companies', 'genres', 'original_language']:
+        if column == 'overview':
+            df[column] = df[column].fillna("").apply(lambda x: ' '.join(x) if isinstance(x, list) else x)
+        else:
+            df[column] = df[column].fillna("").apply(lambda x: x.split('|') if column != 'original_language' else x)
 
-def sample_and_preprocess_data(df, n_samples):
-    global mlb_countries, mlb_companies, ohe_language, tfidf
-    df_sampled = df.sample(n=n_samples)
+    return df
 
-    relevant_attributes = df_sampled[
-        ['genres', 'production_countries', 'production_companies', 'original_language', 'overview']]
 
+def process_data(df):
+    df_preprocessed = preprocess_columns(df)
+
+    tfidf_vectorizer = TfidfVectorizer(max_features=20)
+    overview_tfidf = tfidf_vectorizer.fit_transform(df_preprocessed['overview']).toarray()
+
+    mlb_genres = MultiLabelBinarizer()
     mlb_countries = MultiLabelBinarizer()
     mlb_companies = MultiLabelBinarizer()
+
+    genres_encoded = mlb_genres.fit_transform(df_preprocessed['genres'].tolist())
+    countries_encoded = mlb_countries.fit_transform(df_preprocessed['production_countries'].tolist())
+    companies_encoded = mlb_companies.fit_transform(df_preprocessed['production_companies'].tolist())
+
     ohe_language = OneHotEncoder()
+    language_encoded = ohe_language.fit_transform(df_preprocessed[['original_language']]).toarray()
 
-    relevant_attributes['overview'] = relevant_attributes['overview'].fillna("")
-    relevant_attributes['production_countries'] = relevant_attributes['production_countries'].fillna("")
-    relevant_attributes['production_companies'] = relevant_attributes['production_companies'].fillna("")
-    relevant_attributes['genres'] = relevant_attributes['genres'].fillna("")
-    relevant_attributes['original_language'] = relevant_attributes['original_language'].fillna("")
+    combined_features = np.hstack([
+        genres_encoded,
+        countries_encoded,
+        companies_encoded,
+        language_encoded,
+        overview_tfidf
+    ])
 
-    relevant_attributes['production_countries'] = relevant_attributes['production_countries'].apply(
-        lambda x: x.split('|'))
-    relevant_attributes['production_companies'] = relevant_attributes['production_companies'].apply(
-        lambda x: x.split('|'))
-    relevant_attributes['genres'] = relevant_attributes['genres'].apply(lambda x: x.split('|'))
+    cosine_similarities = cosine_similarity(combined_features)
+    np.save('./cosine_similarities.npy', cosine_similarities)
 
-    countries_encoded = mlb_countries.fit_transform(relevant_attributes['production_countries'])
-    companies_encoded = mlb_companies.fit_transform(relevant_attributes['production_companies'])
-    genres_encoded = mlb_companies.fit_transform(relevant_attributes['genres'])
-    language_encoded = ohe_language.fit_transform(relevant_attributes[['original_language']])
-
-    tfidf = TfidfVectorizer()
-    overview_tfidf = tfidf.fit_transform(relevant_attributes['overview']).toarray()
-
-    features = np.hstack((countries_encoded, companies_encoded, genres_encoded, language_encoded.toarray(), overview_tfidf))
-
-    np.save('preprocessed_data.npy', features)
+    movie_ids_list = df_preprocessed['id'].tolist()
+    np.save('./movie_ids_list.npy', movie_ids_list)
 
 
-def transform_new_data(df_new):
+def load_and_compare(cosine_similarities, movies, movie_id):
+
+    movie_ids_list = movies.tolist()
+    movie_index = movie_ids_list.index(movie_id)
+    movie_similarities = cosine_similarities[movie_index]
+
+    print(len(movie_similarities))
+    similar_indices = movie_similarities.argsort()
+    similar_movie_ids = [movie_ids_list[i] for i in similar_indices[-4:-1] if i != movie_index]
+
+    return similar_movie_ids[-2:]
+
+def train():
+    query = f"""
+        SELECT * FROM movies
     """
-    Transform new data using the same preprocessing as before but without fitting the transformers.
-    This function is a placeholder; actual implementation should use transform method of fitted preprocessors.
-    """
-    df_new['overview'] = df_new['overview'].fillna("")
-    df_new['production_countries'] = df_new['production_countries'].fillna("")
-    df_new['production_companies'] = df_new['production_companies'].fillna("")
-    df_new['genres'] = df_new['genres'].fillna("")
-    df_new['original_language'] = df_new['original_language'].fillna("")
+    global all_cosine_similarities, movie_ids
+    df = pd.read_sql_query(query, db_connection)
+    process_data(df)
+    all_cosine_similarities = np.load('./cosine_similarities.npy')
+    movie_ids = np.load('./movie_ids_list.npy')
 
-    countries_encoded = mlb_countries.transform(df_new['production_countries'].apply(lambda x: x.split('|')))
-    companies_encoded = mlb_companies.transform(df_new['production_companies'].apply(lambda x: x.split('|')))
-    genres_encoded = mlb_companies.transform(df_new['genres'].apply(lambda x: x.split('|')))
-    language_encoded = ohe_language.transform(df_new[['original_language']])
+def run_model(user_id):
+    # train()
+    results = load_and_compare(all_cosine_similarities, movie_ids, 'captain+america+the+first+avenger+2011')
 
-    overview_tfidf = tfidf.transform(df_new['overview']).toarray()
-
-    features_new = np.hstack((countries_encoded, companies_encoded, genres_encoded, language_encoded.toarray(), overview_tfidf))
-    return features_new
-
-
-def load_and_compare(movie_ids, df_movies):
-    features = np.load('preprocessed_data.npy')
-    df_movies_selected = df_movies[df_movies['id'].isin(movie_ids)]
-    features_selected = transform_new_data(df_movies_selected)
-    similarities = cosine_similarity(features_selected, features)
-
-    similar_movies_ids = []
-    for index, movie_similarity in enumerate(similarities):
-        top_similar_indices = movie_similarity.argsort()[-3:-1]  # excluding the last one because it's the movie itself
-        similar_movies_ids.append(df_movies.iloc[top_similar_indices]['id'].values)
-
-    return similar_movies_ids
-
-
-
-sql_query = f"""
-SELECT * FROM movies
-ORDER BY RANDOM()
-"""
-df_movies = pd.read_sql_query(sql_query, db_connection)
-sample_and_preprocess_data(df_movies, 1000)
-movie_ids = ['the+year+my+voice+broke+1987', 'north+country+2005', 'an+honest+liar+2014']
-similar_movies_ids = load_and_compare(movie_ids, df_movies)
-print(similar_movies_ids)
 

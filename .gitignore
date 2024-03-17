@@ -399,3 +399,5 @@ FodyWeavers.xsd
 
 # User Defined
 *.npz
+cosine_similarities.npy
+movie_ids_list.npy

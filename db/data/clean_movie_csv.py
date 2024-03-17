@@ -31,7 +31,6 @@ df['revenue'] = df['revenue'].fillna(-1)
 
 # Drop unnecessary columns
 df.drop('belongs_to_collection', axis=1, inplace=True)
-df.drop('message', axis=1, inplace=True)
 
 # Save the cleaned DataFrame back to CSV
 df.to_csv('movies.csv', index=False)
