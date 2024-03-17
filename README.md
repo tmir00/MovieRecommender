@@ -33,7 +33,6 @@ The response includes a flag indicating whether the user has an account in our d
 
 <br>
 
-
 ## **Getting Started**
 1. Clone the repository
 ```bash
@@ -54,7 +53,6 @@ docker-compose up --build
 
 
 <br>
-<br>
 
 ## **Project Overview**
 
@@ -63,8 +61,6 @@ The movie recommendation model relies on a dataset collected from a Kafka stream
 - `movies.csv`: Contains data about movies, such as genres, production countries, production companies, original language, and overview.
 - `users.csv`: Stores user demographic data, including age, gender, and occupation.
 - `ratings.csv`: Records each user's rating of movies.
-
-
 
 ### **2. Database Integration**
 
@@ -75,8 +71,6 @@ The raw data collected is then integrated into a PostgreSQL database to facilita
 
 The PostgreSQL database contains three primary tables to store movies, users, and their ratings. Below is an overview of these tables:
 
-<br>
-
 ### List of Relations
 
 The schema of the tables in the PostgreSQL database is as follows:
@@ -85,8 +79,6 @@ Schema | Name | Type | Owner
 public | movies | table | user
 public | ratings | table | user
 public | users | table | user
-
-<br>
 
 ### Movies Table:
 #### Table: `public.movies`
@@ -119,8 +111,6 @@ public | users | table | user
 **Indexes:**
 - `"movies_pkey" PRIMARY KEY, btree (id)`
 
-<br>
-
 ### Users Table:
 #### Table: `public.users`
 
@@ -136,8 +126,6 @@ public | users | table | user
 
 **Referenced by:**
 - TABLE `"ratings"` CONSTRAINT `"ratings_user_id_fkey"` FOREIGN KEY (user_id) REFERENCES users(user_id)
-
-<br>
 
 ### Ratings Table:
 #### Table: `public.ratings`
@@ -177,10 +165,15 @@ The model calculates cosine similarities between movies based on their features 
 
 The Flask application offers an API endpoint to handle recommendation requests. It performs error checking on the incoming requests and returns a response containing the recommended movies.
 
-
-
 #### Example Request:
 
 ```bash
 curl -X POST http://localhost:5000/predict -H "Content-Type: application/json" -d '{"user_id": "<user_id>"}'
 ```
+
+<br>
+
+## Process Flow Diagram
+The diagram below summarizes and illustrates the data flow and operational processes within the project, from initial data processing to the final output of personalized movie recommendations.
+![Process Flow](./processflow.png)
+
