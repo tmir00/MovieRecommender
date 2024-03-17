@@ -175,5 +175,5 @@ curl -X POST http://localhost:5000/predict -H "Content-Type: application/json" -
 
 ## Process Flow Diagram
 The diagram below summarizes and illustrates the data flow and operational processes within the project, from initial data processing to the final output of personalized movie recommendations.
-![Process Flow](./processflow.png)
+![Process Flow](images/projectflow.png)
 
