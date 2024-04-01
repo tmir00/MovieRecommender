@@ -1,0 +1,95 @@
+stages:
+  - lint
+  - test
+  - prepare
+  - deploy
+  - cleanup
+
+variables:
+  IMAGE_NAME: movie-recommender
+  TEAM_NUMBER: 6
+  SERVER_ADDRESS: fall2023-comp585-6.cs.mcgill.ca
+  COMMON_USER: team-6
+
+
+lint_code:
+  stage: lint
+  only:
+    - modelRefinementCosine
+  script:
+    - cd src/team6_app/fastapi
+    - docker build -t ${IMAGE_NAME}:lint .
+    - docker run --name ${IMAGE_NAME}_lint ${IMAGE_NAME}:lint pylint model.py request_utils.py utils.py
+    - docker rm ${IMAGE_NAME}_lint
+
+unit_tests:
+  stage: test
+  only:
+    - modelRefinementCosine
+  script:
+    - cd src/team6_app/fastapi
+    - docker build -t ${IMAGE_NAME}:test .
+    - docker run --name ${IMAGE_NAME}_test ${IMAGE_NAME}:test python modelUnitTests.py
+    - docker rm ${IMAGE_NAME}_test
+
+#train_model:
+#  stage: train
+#  only:
+#    - modelRefinementCosine
+#  script:
+#    - cd src/team6_app/fastapi
+#    - docker build -t ${IMAGE_NAME}:train .
+#    - docker run --name ${IMAGE_NAME}_train -v $(pwd)/model_output:/model_output ${IMAGE_NAME}:train python trainModel.py
+#    - docker rm ${IMAGE_NAME}_train
+#    # - tar -cvzf model_output.tar.gz .
+#    # - ls
+#  # artifacts:
+#  #   paths:
+#  #     - model_output.tar.gz
+#  #  expire_in: 5 min
+
+
+prepare_version:
+  stage: prepare
+  only:
+    - modelRefinementCosine
+  script:
+    - chmod +x scripts/increment_version.sh
+    - MODEL_VERSION_NUMBER=$(./scripts/increment_version.sh)
+    - echo "MODEL_VERSION_NUMBER=${MODEL_VERSION_NUMBER}" > model_version.env
+  artifacts:
+    reports:
+      dotenv: model_version.env
+
+
+remove_existing_container:
+  stage: prepare
+  only:
+    - modelRefinementCosine
+  script:
+    - chmod +x scripts/remove_containers.sh
+    - ./scripts/remove_containers.sh
+
+
+deploy_model:
+  stage: deploy
+  dependencies:
+    - prepare_version
+  only:
+    - modelRefinementCosine
+  script:
+    - cd src/team6_app/fastapi
+    - docker build -t ${IMAGE_NAME}_${MODEL_VERSION_NUMBER} --build-arg MODEL_VERSION_NUMBER=${MODEL_VERSION_NUMBER} .
+    - docker run -d -p 8082:8082 --name ${IMAGE_NAME}_${MODEL_VERSION_NUMBER} -e MODEL_VERSION_NUMBER=${MODEL_VERSION_NUMBER} -v $(pwd)/model_output:/model_output ${IMAGE_NAME}_${MODEL_VERSION_NUMBER}
+
+
+cleanup_on_failure:
+  stage: cleanup
+  only:
+    - modelRefinementCosine
+  script:
+    - docker rm -f ${IMAGE_NAME}_lint || true
+    - docker rm -f ${IMAGE_NAME}_test || true
+    - docker rm -f ${IMAGE_NAME}_{MODEL_VERSION_NUMBER} || true
+    # - docker rm -f ${IMAGE_NAME}_train || true
+  when: on_failure
